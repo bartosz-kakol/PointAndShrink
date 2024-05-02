@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="WinFormsDarkMode" Version="1.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Update="Assets.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>
