@@ -1,12 +1,5 @@
 ﻿using Microsoft.Win32;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Formats.Tar;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PointAndShrink
 {
@@ -64,20 +57,14 @@ namespace PointAndShrink
             _ = SystemParametersInfo(SPI_SETCURSORS, 0, 0, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
         }
 
-        private static string GetSuffixForSizeVariant(SizeVariant variant)
+        private static string GetSuffixForSizeVariant(SizeVariant variant) => variant switch
         {
-            return variant switch
-            {
-                SizeVariant.Large => "_l",
-                SizeVariant.ExtraLarge => "_xl",
-                _ => ""
-            };
-        }
+            SizeVariant.Large => "_l",
+            SizeVariant.ExtraLarge => "_xl",
+            _ => ""
+        };
 
-        private void SetSingleCursorFile(string cursorName, string filePath)
-        {
-            cursorsRegistryKey.SetValue(cursorName, filePath);
-        }
+        private void SetSingleCursorFile(string cursorName, string filePath) => cursorsRegistryKey.SetValue(cursorName, filePath);
 
         public void SetPointerSize(SizeVariant variant)
         {

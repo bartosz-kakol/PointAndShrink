@@ -6,9 +6,10 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
-	<ForceDesignerDpiUnaware>true</ForceDesignerDpiUnaware>
-	<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-	<ApplicationIcon>Resources\appicon.ico</ApplicationIcon>
+	  <ForceDesignerDpiUnaware>true</ForceDesignerDpiUnaware>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	  <ApplicationIcon>Resources\appicon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

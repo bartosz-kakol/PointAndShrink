@@ -1,3 +1,6 @@
+using Microsoft.Win32;
+using System.Diagnostics;
+using System.Text.Json;
 using WinFormsDarkMode;
 
 namespace PointAndShrink
@@ -6,62 +9,22 @@ namespace PointAndShrink
     {
         private readonly PointerSettings pointerSettings;
 
-        private readonly Configurations configurations;
-
         private Thread? backgroundThread;
 
-        private Configurations.Configuration? selectedConfiguration;
+        private ManualResetEventSlim backgroundThreadPauseEvent = new(true);
 
         private string currentScreen = "";
 
-        private string? SelectedDisplayDeviceName => displaySelector.SelectedItem?.ToString();
+        private Dictionary<string, Monitors.ScalingFactor> scalingFactors = [];
 
         public Form1()
         {
             pointerSettings = new PointerSettings();
-            configurations = new Configurations();
 
             InitializeComponent();
 
-            sizeRadioDefault.CheckedChanged += SizeRadioCheckedChanged;
-            sizeRadioLarge.CheckedChanged += SizeRadioCheckedChanged;
-            sizeRadioExtraLarge.CheckedChanged += SizeRadioCheckedChanged;
-
             Icon = Assets.appicon;
             trayIcon.Icon = Assets.appicon;
-        }
-
-        private void ModifyConfigurationForDisplay(string display, Action<Configurations.Configuration> modifier)
-        {
-            var configuration = configurations.GetForDisplay(display);
-            modifier(configuration);
-            configurations.SetForDisplay(display, configuration);
-        }
-
-        private void SizeRadioCheckedChanged(object? sender, EventArgs e)
-        {
-            if (selectedConfiguration == null || SelectedDisplayDeviceName == null)
-            {
-                return;
-            }
-
-            var radio = (RadioButton)sender!;
-            
-            if (radio.Checked)
-            {
-                var tag = (radio.Tag ?? "").ToString();
-                var sizeVariant = tag switch
-                {
-                    "l" => PointerSettings.SizeVariant.Large,
-                    "xl" => PointerSettings.SizeVariant.ExtraLarge,
-                    _ => PointerSettings.SizeVariant.Default,
-                };
-
-                ModifyConfigurationForDisplay(SelectedDisplayDeviceName, configuration =>
-                {
-                    configuration.Size = sizeVariant;
-                });
-            }
         }
 
         private void DoEverythingToFocusTheWindow()
@@ -81,20 +44,11 @@ namespace PointAndShrink
             {
                 MessageBox.Show("Could not find Cursors registry key.", "Failed to initialize", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Application.Exit();
+                return;
             }
 
-            foreach (var screen in Screen.AllScreens)
-            {
-                displaySelector.Items.Add(screen.DeviceName);
-            }
-
-            if (displaySelector.Items.Count == 0)
-            {
-                MessageBox.Show("Could not find any screen.", "Failed to initialize", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                Application.Exit();
-            }
-
-            displaySelector.SelectedIndex = 0;
+            UpdateMonitors();
+            SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged;
 
             backgroundThread = new Thread(BackgroundLoop)
             {
@@ -103,49 +57,70 @@ namespace PointAndShrink
             backgroundThread.Start();
         }
 
-        private void RefreshConfigurationDisplay()
+        private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
         {
-            if (selectedConfiguration == null)
+            Debug.WriteLine("SystemEvents_DisplaySettingsChanged");
+            UpdateMonitors();
+
+            if (scalingFactors.Count <= 1)
             {
-                return;
+                backgroundThreadPauseEvent.Reset();
+            }
+            else
+            {
+                backgroundThreadPauseEvent.Set();
+            }
+        }
+
+        private void UpdateMonitors()
+        {
+            scalingFactors = [];
+
+            foreach (var monitor in Monitors.GetMonitors())
+            {
+                scalingFactors.Add(monitor.Screen.DeviceName, monitor.ScalingFactor);
             }
 
-            // Size radio buttons
-            switch (selectedConfiguration.Size)
-            {
-                case PointerSettings.SizeVariant.Default:
-                    sizeRadioDefault.Checked = true;
-                    break;
-                case PointerSettings.SizeVariant.Large:
-                    sizeRadioLarge.Checked = true;
-                    break;
-                case PointerSettings.SizeVariant.ExtraLarge:
-                    sizeRadioExtraLarge.Checked = true;
-                    break;
-            }
+            currentScreen = "";
         }
 
         private void BackgroundLoop()
         {
             while (true)
             {
+                backgroundThreadPauseEvent.Wait();
+
                 var screen = Screen.FromPoint(Cursor.Position);
 
                 if (screen.DeviceName != currentScreen)
                 {
                     currentScreen = screen.DeviceName;
-                    var configuration = configurations.GetForDisplay(currentScreen);
 
-                    pointerSettings.SetPointerSize(configuration.Size);
+                    if (!scalingFactors.ContainsKey(currentScreen))
+                    {
+                        Debug.WriteLine($"[WARNING] Asked for the scaling factor of a screen which hasn't registered yet! ({currentScreen})");
+                        currentScreen = "";
+                        Thread.Sleep(500);
+                        continue;
+                    }
+
+                    var scalingFactor = scalingFactors[currentScreen];
+                    var cursorSize = scalingFactor switch
+                    {
+                        Monitors.ScalingFactor.Scale125 => PointerSettings.SizeVariant.Large,
+                        Monitors.ScalingFactor.Scale175 => PointerSettings.SizeVariant.Large,
+                        _ => PointerSettings.SizeVariant.Default,
+                    };
+
+                    pointerSettings.SetPointerSize(cursorSize);
                 }
 
-                Thread.Sleep(5);
+                Thread.Sleep(10);
             }
         }
 
         private void Form1_Activated(object? sender, EventArgs e)
         {
-            DarkMode.FixComboBox(displaySelector);
             Hide();
             Opacity = 1;
             Activated -= Form1_Activated;
@@ -153,23 +128,24 @@ namespace PointAndShrink
 
         private void trayIcon_Click(object sender, EventArgs e)
         {
-            Show();
-            DoEverythingToFocusTheWindow();
+            //Show();
+            //DoEverythingToFocusTheWindow();
+
+            var result = MessageBox.Show("Do you want to stop PointAndShrink?", "Quit PointAndShrink", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                Close();
+            }
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
-            e.Cancel = true;
-            Hide();
-        }
+            //e.Cancel = true;
+            //Hide();
 
-        private void displaySelector_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            if (SelectedDisplayDeviceName != null)
-            {
-                selectedConfiguration = configurations.GetForDisplay(SelectedDisplayDeviceName);
-                RefreshConfigurationDisplay();
-            }
+            SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
+            pointerSettings.SetPointerSize(PointerSettings.SizeVariant.Default);
         }
     }
 }
